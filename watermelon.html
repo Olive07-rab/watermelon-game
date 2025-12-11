@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>合成大西瓜·真实水果版(可合成)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<style>
+  body{margin:0;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+       display:flex;justify-content:center;align-items:center;min-height:100vh;font-family:Arial;}
+  .box{background:#fff;border-radius:20px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,.3);}
+  #score{text-align:center;font-size:24px;margin-bottom:10px}
+  canvas{display:block;border-radius:10px;cursor:pointer}
+  #gameOver{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+            background:rgba(0,0,0,.85);color:#fff;padding:30px;border-radius:10px;text-align:center;display:none}
+  #gameOver h2{margin:0 0 15px}
+  .btn{background:#4CAF50;color:#fff;border:none;padding:10px 30px;font-size:18px;border-radius:5px;cursor:pointer}
+  .btn:hover{background:#45a049}
+</style>
+</head>
+<body>
+<div class="box">
+  <div id="score">得分：<span id="scoreNum">0</span></div>
+  <canvas id="cvs" width="400" height="600"></canvas>
+  <div id="gameOver">
+    <h2>游戏结束！</h2>
+    <p>最终得分：<span id="final">0</span></p >
+    <button class="btn" onclick="restart()">再来一局</button>
+  </div>
+</div>
+
+<script>
+const cvs=document.getElementById('cvs'),ctx=cvs.getContext('2d');
+const fruitImgs=[],fruitEmoji=['🍒','🍋','🍊','🍑','🍍','🥥','🍉','🍈'];
+const fruitSize=[15,22,30,38,46,54,62,70],fruitScore=[1,3,6,10,15,21,28,36];
+let score=0,gameOver=false,fruits=[],nextType=0,dropFruit=null;
+
+class Fruit{
+  constructor(x,y,type){this.x=x;this.y=y;this.type=type;this.r=fruitSize[type];
+    this.vx=0;this.vy=0;this.merged=false;}
+  draw(){ctx.drawImage(fruitImgs[this.type],this.x-this.r,this.y-this.r,this.r*2,this.r*2);}
+  update(){
+    if(this.y+this.r<cvs.height-10)this.vy+=.5;else{this.vy=0;this.y=cvs.height-10-this.r;}
+    this.x+=this.vx;this.y+=this.vy;
+    if(this.x-this.r<0||this.x+this.r>cvs.width){this.vx*=-.5;this.x=Math.max(this.r,Math.min(cvs.width-this.r,this.x));}
+    this.vx*=.98;
+  }
+}
+function emojiToImage(emoji,cb){
+  const can=document.createElement('canvas'),cx=can.getContext('2d'),s=128;
+  can.width=can.height=s;cx.textAlign='center';cx.textBaseline='middle';cx.font=s*0.9+'px Arial';
+  cx.fillText(emoji,s/2,s/2);const img=new Image();img.src=can.toDataURL();img.onload=()=>cb(img);
+}
+let loaded=0; fruitEmoji.forEach((e,i)=>emojiToImage(e,img=>{fruitImgs[i]=img;loaded++;if(loaded===fruitEmoji.length)init();}));
+function init(){
+  nextType=Math.floor(Math.random()*3);
+  cvs.addEventListener('click',e=>{
+    if(gameOver||dropFruit)return;
+    const rect=cvs.getBoundingClientRect(),x=e.clientX-rect.left;
+    dropFruit=new Fruit(x,50,nextType);nextType=Math.floor(Math.random()*3);
+  });
+  requestAnimationFrame(loop);
+}
+function collide(a,b){const dx=a.x-b.x,dy=a.y-b.y;return Math.hypot(dx,dy)<a.r+b.r;}
+function merge(a,b){
+  if(a.type===b.type&&a.type<fruitEmoji.length-1){
+    const nf=new Fruit((a.x+b.x)/2,(a.y+b.y)/2,a.type+1);
+    score+=fruitScore[a.type+1];document.getElementById('scoreNum').textContent=score;
+    fruits=fruits.filter(f=>f!==a&&f!==b);fruits.push(nf);return true;
+  }return false;
+}
+function checkOver(){for(let f of fruits)if(f.y<80){gameOver=true;document.getElementById('final').textContent=score;document.getElementById('gameOver').style.display='block';return true;}return false;}
+function restart(){score=0;gameOver=false;fruits=[];dropFruit=null;document.getElementById('scoreNum').textContent=0;document.getElementById('gameOver').style.display='none';nextType=Math.floor(Math.random()*3);}
+function drawPreview(){ctx.globalAlpha=.6;new Fruit(cvs.width/2,50,nextType).draw();ctx.globalAlpha=1;ctx.fillStyle='#555';ctx.font='14px Arial';ctx.textAlign='center';ctx.fillText('点击投放水果',cvs.width/2,30);}
+function loop(){
+  ctx.clearRect(0,0,cvs.width,cvs.height);
+  ctx.strokeStyle='#e0e0e0';ctx.lineWidth=1;for(let i=0;i<cvs.width;i+=50){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,cvs.height);ctx.stroke();}
+  // 下落果
+  if(dropFruit){dropFruit.update();dropFruit.draw();let landed=false;
+    if(dropFruit.y+dropFruit.r>=cvs.height-10)landed=true;
+    else for(let f of fruits)if(collide(dropFruit,f)){landed=true;break;}
+    if(landed){fruits.push(dropFruit);dropFruit=null;}
+  }
+  // 处理合并 + 更新
+  let needCheck=true;
+  while(needCheck){needCheck=false;
+    for(let i=0;i<fruits.length;i++){
+      for(let j=i+1;j<fruits.length;j++){
+        if(collide(fruits[i],fruits[j])&&merge(fruits[i],fruits[j])){needCheck=true;break;}
+      }if(needCheck)break;
+    }
+  }
+  fruits.forEach(f=>f.update());fruits.forEach(f=>f.draw());
+  if(!dropFruit&&!gameOver)drawPreview();
+  if(!gameOver)checkOver();
+  requestAnimationFrame(loop);
+}
+</script>
+</body>
+</html>
